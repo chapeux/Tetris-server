@@ -68,8 +68,8 @@ io.on("connection", (socket) => {
       rooms.set(roomId, room);
     }
 
-    if (room.players.size >= 3) {
-      return callback({ error: "Sala cheia. Máximo de 3 jogadores." });
+    if (room.players.size >= 4) {
+      return callback({ error: "Sala cheia. Máximo de 4 jogadores." });
     }
 
     if (room.isPlaying) {
@@ -167,10 +167,16 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("use_power", (powerType: string) => {
+  socket.on("use_power", ({ type, cost }: { type: string, cost: number }) => {
     const roomId = socketToRoom.get(socket.id);
     if (roomId) {
-      socket.to(roomId).emit("receive_power", { id: socket.id, type: powerType });
+      const room = rooms.get(roomId);
+      if (room) {
+        const p = room.players.get(socket.id);
+        if (p) p.score -= cost;
+        io.to(roomId).emit("score_updated", { id: socket.id, score: p?.score });
+      }
+      socket.to(roomId).emit("receive_power", { id: socket.id, type });
     }
   });
 
