@@ -160,28 +160,55 @@ io.on("connection", (socket) => {
       if (room) {
         const p = room.players.get(socket.id);
         if (p) {
+          const oldScore = p.totalScore;
           p.score += numLines * 100;
           p.totalScore += numLines * 100;
+          
+          // Garbage every 400 points
+          const oldGate = Math.floor(oldScore / 400);
+          const newGate = Math.floor(p.totalScore / 400);
+          if (newGate > oldGate) {
+            socket.to(roomId).emit("receive_garbage", { id: socket.id, lines: newGate - oldGate });
+          }
         }
         
         io.to(roomId).emit("score_updated", { id: socket.id, score: p?.score });
-        if (numLines > 0) {
-          socket.to(roomId).emit("receive_garbage", { id: socket.id, lines: numLines });
-        }
       }
     }
   });
 
-  socket.on("use_power", ({ type, cost }: { type: string, cost: number }) => {
+  socket.on("use_power", ({ type, cost, targetId }: { type: string, cost: number, targetId?: string }) => {
     const roomId = socketToRoom.get(socket.id);
-    if (roomId) {
-      const room = rooms.get(roomId);
-      if (room) {
-        const p = room.players.get(socket.id);
-        if (p) p.score -= cost;
-        io.to(roomId).emit("score_updated", { id: socket.id, score: p?.score });
-      }
-      socket.to(roomId).emit("receive_power", { id: socket.id, type });
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    const p = room.players.get(socket.id);
+    if (p) {
+      p.score -= cost;
+      io.to(roomId).emit("score_updated", { id: socket.id, score: p.score });
+    }
+
+    if (type === "share_wealth") {
+        // Find an opponent to give 200 pts
+        const opponents = Array.from(room.players.values()).filter(player => player.id !== socket.id);
+        if (opponents.length > 0) {
+            const target = opponents[Math.floor(Math.random() * opponents.length)];
+            target.score += 200;
+            target.totalScore += 200;
+            io.to(roomId).emit("score_updated", { id: target.id, score: target.score });
+        }
+    } else if (type === "gift_box") {
+        const isSelf = Math.random() > 0.5;
+        const randomPower = ["fog", "mirror", "concrete", "frozen", "flicker", "curse"][Math.floor(Math.random() * 6)];
+        if (isSelf) {
+            socket.emit("receive_power", { type: randomPower, id: "gift_box_system" });
+        } else {
+            socket.to(roomId).emit("receive_power", { type: randomPower, id: "gift_box_system" });
+        }
+    } else {
+        // Default relay
+        socket.to(roomId).emit("receive_power", { id: socket.id, type, targetId });
     }
   });
 
