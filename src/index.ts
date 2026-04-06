@@ -50,12 +50,15 @@ io.on("connection", (socket) => {
   console.log("Player connected:", socket.id);
 
   socket.on("join_room", ({ roomId, nickname }, callback) => {
-    let room = rooms.get(roomId);
+    if (!roomId || typeof roomId !== 'string') return;
+    const cleanRoomId = roomId.trim().toLowerCase();
+    
+    let room = rooms.get(cleanRoomId);
 
     if (!room) {
       // Create room
       room = {
-        id: roomId,
+        id: cleanRoomId,
         adminId: socket.id,
         players: new Map(),
         isPlaying: false,
@@ -80,11 +83,11 @@ io.on("connection", (socket) => {
       score: 0
     });
 
-    socket.join(roomId);
-    socketToRoom.set(socket.id, roomId);
+    socket.join(cleanRoomId);
+    socketToRoom.set(socket.id, cleanRoomId);
     
     callback({ success: true });
-    emitRoomUpdate(roomId);
+    emitRoomUpdate(cleanRoomId);
   });
 
   socket.on("kick_player", (playerId) => {
