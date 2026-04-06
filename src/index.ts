@@ -167,6 +167,13 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("use_power", (powerType: string) => {
+    const roomId = socketToRoom.get(socket.id);
+    if (roomId) {
+      socket.to(roomId).emit("receive_power", { id: socket.id, type: powerType });
+    }
+  });
+
   socket.on("game_over", () => {
     const roomId = socketToRoom.get(socket.id);
     if (!roomId) return;
