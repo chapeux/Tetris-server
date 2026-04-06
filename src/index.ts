@@ -18,6 +18,7 @@ interface Player {
   nickname: string;
   isAlive: boolean;
   score: number;
+  totalScore: number;
 }
 
 interface Room {
@@ -80,7 +81,8 @@ io.on("connection", (socket) => {
       id: socket.id,
       nickname,
       isAlive: true,
-      score: 0
+      score: 0,
+      totalScore: 0
     });
 
     socket.join(cleanRoomId);
@@ -125,7 +127,7 @@ io.on("connection", (socket) => {
       if (room && room.adminId === socket.id) {
         room.isPlaying = true;
         room.isPaused = false;
-        room.players.forEach(p => { p.isAlive = true; p.score = 0; });
+        room.players.forEach(p => { p.isAlive = true; p.score = 0; p.totalScore = 0; });
         io.to(roomId).emit("game_started");
         emitRoomUpdate(roomId);
       }
@@ -157,7 +159,10 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomId);
       if (room) {
         const p = room.players.get(socket.id);
-        if (p) p.score += numLines * 100;
+        if (p) {
+          p.score += numLines * 100;
+          p.totalScore += numLines * 100;
+        }
         
         io.to(roomId).emit("score_updated", { id: socket.id, score: p?.score });
         if (numLines > 0) {
