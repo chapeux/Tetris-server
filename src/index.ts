@@ -223,8 +223,8 @@ io.on("connection", (socket) => {
       });
       io.to(roomId).emit("receive_power", { type: "anistia", id: socket.id });
     } else if (type === "scatter_bomb") {
-      // Send 2 garbage lines to all opponents
-      socket.to(roomId).emit("receive_garbage", { id: socket.id, lines: 2 });
+      // Just relay to opponents (client handles dual pieces)
+      socket.to(roomId).emit("receive_power", { id: socket.id, type });
     } else if (type === "local_deduction") {
       // No relay needed, just score deduction which was already done
     } else {
