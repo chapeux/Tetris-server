@@ -57,7 +57,6 @@ io.on("connection", (socket) => {
     let room = rooms.get(cleanRoomId);
 
     if (!room) {
-      // Create room
       room = {
         id: cleanRoomId,
         adminId: socket.id,
@@ -96,7 +95,6 @@ io.on("connection", (socket) => {
     const roomId = socketToRoom.get(socket.id);
     if (!roomId) return;
     const room = rooms.get(roomId);
-    // only admin can kick, and can't kick themselves
     if (room && room.adminId === socket.id && playerId !== socket.id) {
       room.players.delete(playerId);
       const targetSocket = io.sockets.sockets.get(playerId);
@@ -177,7 +175,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("use_power", ({ type, cost, targetId }: { type: string, cost: number, targetId?: string }) => {
+  socket.on("use_power", ({ type, cost }: { type: string, cost: number }) => {
     const roomId = socketToRoom.get(socket.id);
     if (!roomId) return;
     const room = rooms.get(roomId);
@@ -190,25 +188,48 @@ io.on("connection", (socket) => {
     }
 
     if (type === "share_wealth") {
-        // Find an opponent to give 200 pts
-        const opponents = Array.from(room.players.values()).filter(player => player.id !== socket.id);
-        if (opponents.length > 0) {
-            const target = opponents[Math.floor(Math.random() * opponents.length)];
-            target.score += 200;
-            target.totalScore += 200;
-            io.to(roomId).emit("score_updated", { id: target.id, score: target.score });
-        }
+      const opponents = Array.from(room.players.values()).filter(player => player.id !== socket.id);
+      if (opponents.length > 0) {
+        const target = opponents[Math.floor(Math.random() * opponents.length)];
+        target.score += 200;
+        target.totalScore += 200;
+        io.to(roomId).emit("score_updated", { id: target.id, score: target.score });
+      }
     } else if (type === "gift_box") {
-        const isSelf = Math.random() > 0.5;
-        const randomPower = ["fog", "mirror", "concrete", "frozen", "flicker", "curse"][Math.floor(Math.random() * 6)];
-        if (isSelf) {
-            socket.emit("receive_power", { type: randomPower, id: "gift_box_system" });
-        } else {
-            socket.to(roomId).emit("receive_power", { type: randomPower, id: "gift_box_system" });
-        }
+      const allPowers = ["fog", "mirror", "concrete", "frozen", "flicker", "curse", "sticky", "metamorph", "ghost_shadows", "popup", "shake", "wind", "bouncy"];
+      const isSelf = Math.random() > 0.5;
+      const randomPower = allPowers[Math.floor(Math.random() * allPowers.length)];
+      if (isSelf) {
+        socket.emit("receive_power", { type: randomPower, id: "gift_box_system" });
+      } else {
+        socket.to(roomId).emit("receive_power", { type: randomPower, id: "gift_box_system" });
+      }
+    } else if (type === "swap_board") {
+      // Real swap: pick a random opponent and swap boards
+      const opponents = Array.from(room.players.values()).filter(player => player.id !== socket.id && player.isAlive);
+      if (opponents.length > 0) {
+        const victim = opponents[Math.floor(Math.random() * opponents.length)];
+        // Tell both clients to swap
+        io.to(roomId).emit("swap_boards", { from: socket.id, to: victim.id });
+      }
+    } else if (type === "garbage_rain") {
+      // Everyone (including caster) receives garbage
+      io.to(roomId).emit("receive_garbage", { id: "garbage_rain", lines: 1 });
+    } else if (type === "anistia") {
+      // Reset everyone's score, clear 3 bottom lines for all
+      room.players.forEach(player => {
+        player.score = 0;
+        io.to(roomId).emit("score_updated", { id: player.id, score: 0 });
+      });
+      io.to(roomId).emit("receive_power", { type: "anistia", id: socket.id });
+    } else if (type === "scatter_bomb") {
+      // Send 2 garbage lines to all opponents
+      socket.to(roomId).emit("receive_garbage", { id: socket.id, lines: 2 });
+    } else if (type === "local_deduction") {
+      // No relay needed, just score deduction which was already done
     } else {
-        // Default relay
-        socket.to(roomId).emit("receive_power", { id: socket.id, type, targetId });
+      // Default relay to opponents
+      socket.to(roomId).emit("receive_power", { id: socket.id, type });
     }
   });
 
@@ -255,7 +276,6 @@ io.on("connection", (socket) => {
         if (room.players.size === 0) {
           rooms.delete(roomId);
         } else {
-          // Pass admin rights if admin left
           if (room.adminId === socket.id) {
             const nextAdmin = room.players.keys().next().value;
             if (nextAdmin) room.adminId = nextAdmin;
