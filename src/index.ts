@@ -233,6 +233,13 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("marionette_move", (data) => {
+    const roomId = socketToRoom.get(socket.id);
+    if (roomId) {
+      socket.to(roomId).emit("receive_marionette", data);
+    }
+  });
+
   socket.on("game_over", () => {
     const roomId = socketToRoom.get(socket.id);
     if (!roomId) return;
