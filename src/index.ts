@@ -140,14 +140,13 @@ io.on("connection", (socket) => {
       if (room && room.adminId === socket.id) {
         room.isPlaying = true;
         room.isPaused = false;
-        const seed = Math.random();
         room.players.forEach(p => { 
           p.isAlive = true; 
           p.isSpectator = false;
           p.score = 0; 
           p.totalScore = 0; 
         });
-        io.to(roomId).emit("game_started", { seed });
+        io.to(roomId).emit("game_started");
         emitRoomUpdate(roomId);
         emitRoomsList();
       }
