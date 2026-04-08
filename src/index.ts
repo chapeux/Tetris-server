@@ -17,6 +17,7 @@ interface Player {
   id: string;
   nickname: string;
   isAlive: boolean;
+  isSpectator: boolean;
   score: number;
   totalScore: number;
 }
@@ -47,8 +48,22 @@ const emitRoomUpdate = (roomId: string) => {
   });
 };
 
+const emitRoomsList = () => {
+  const roomsList = Array.from(rooms.values()).map(r => ({
+    id: r.id,
+    playersCount: r.players.size,
+    players: Array.from(r.players.values()).map(p => p.nickname),
+    isPlaying: r.isPlaying
+  }));
+  io.emit("rooms_list", roomsList);
+};
+
 io.on("connection", (socket) => {
   console.log("Player connected:", socket.id);
+
+  socket.on("get_rooms", () => {
+    emitRoomsList();
+  });
 
   socket.on("join_room", ({ roomId, nickname }, callback) => {
     if (!roomId || typeof roomId !== 'string') return;
@@ -68,18 +83,17 @@ io.on("connection", (socket) => {
       rooms.set(roomId, room);
     }
 
-    if (room.players.size >= 4) {
-      return callback({ error: "Sala cheia. Máximo de 4 jogadores." });
-    }
+    const isJoiningDuringPlay = room.isPlaying;
 
-    if (room.isPlaying) {
-      return callback({ error: "A partida já começou nesta sala." });
+    if (room.players.size >= 10) { // Increased limit for spectators
+      return callback({ error: "Sala cheia." });
     }
 
     room.players.set(socket.id, {
       id: socket.id,
       nickname,
-      isAlive: true,
+      isAlive: !isJoiningDuringPlay,
+      isSpectator: isJoiningDuringPlay,
       score: 0,
       totalScore: 0
     });
@@ -87,8 +101,9 @@ io.on("connection", (socket) => {
     socket.join(cleanRoomId);
     socketToRoom.set(socket.id, cleanRoomId);
     
-    callback({ success: true });
+    callback({ success: true, isSpectator: isJoiningDuringPlay });
     emitRoomUpdate(cleanRoomId);
+    emitRoomsList();
   });
 
   socket.on("kick_player", (playerId) => {
@@ -125,9 +140,16 @@ io.on("connection", (socket) => {
       if (room && room.adminId === socket.id) {
         room.isPlaying = true;
         room.isPaused = false;
-        room.players.forEach(p => { p.isAlive = true; p.score = 0; p.totalScore = 0; });
-        io.to(roomId).emit("game_started");
+        const seed = Math.random();
+        room.players.forEach(p => { 
+          p.isAlive = true; 
+          p.isSpectator = false;
+          p.score = 0; 
+          p.totalScore = 0; 
+        });
+        io.to(roomId).emit("game_started", { seed });
         emitRoomUpdate(roomId);
+        emitRoomsList();
       }
     }
   });
@@ -254,7 +276,7 @@ io.on("connection", (socket) => {
       let aliveCount = 0;
       let winnerId = null;
       room.players.forEach((player, pid) => {
-        if (player.isAlive) {
+        if (player.isAlive && !player.isSpectator) {
           aliveCount++;
           winnerId = pid;
         }
@@ -263,9 +285,11 @@ io.on("connection", (socket) => {
       if (room.players.size > 1 && aliveCount === 1) {
         io.to(roomId).emit("victory", winnerId);
         room.isPlaying = false;
+        emitRoomsList();
       } else if (aliveCount === 0) {
         io.to(roomId).emit("game_ended_draw");
         room.isPlaying = false;
+        emitRoomsList();
       }
       emitRoomUpdate(roomId);
     }
@@ -282,6 +306,7 @@ io.on("connection", (socket) => {
         
         if (room.players.size === 0) {
           rooms.delete(roomId);
+          emitRoomsList();
         } else {
           if (room.adminId === socket.id) {
             const nextAdmin = room.players.keys().next().value;
@@ -289,6 +314,7 @@ io.on("connection", (socket) => {
           }
           socket.to(roomId).emit("player_left", socket.id);
           emitRoomUpdate(roomId);
+          emitRoomsList();
         }
       }
     }
